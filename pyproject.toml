@@ -1,0 +1,16 @@
+[tool.poetry]
+name = "autogen-research"
+version = "0.1.0"
+description = ""
+authors = ["10148120 <seonghwa.kim@kt.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = ">=3.11, <3.13"
+python-dotenv = "^1.0.1"
+autogen-agentchat = "0.2.38"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
