@@ -9,6 +9,10 @@ readme = "README.md"
 python = ">=3.11, <3.13"
 python-dotenv = "^1.0.1"
 autogen-agentchat = "0.2.38"
+langgraph = "^0.2.50"
+langchain-openai = "^0.2.8"
+langchain-core = "^0.3.19"
+langchain = "^0.3.7"
 
 
 [build-system]
