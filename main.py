@@ -1,10 +1,9 @@
-import os
 from typing import Annotated
 
-from dotenv import load_dotenv
 from autogen import ConversableAgent, UserProxyAgent, AssistantAgent
 
-load_dotenv()
+from config import llm_config
+
 
 def plus(
         a: Annotated[float, "The first number to add"],
@@ -30,17 +29,6 @@ def divide(
 ) -> Annotated[float, "The quotient of the two numbers"]:
     return a / b
 
-llm_config = {
-    "config_list":[
-        {
-            "model":"gpt-4o",
-            "api_type":"azure",
-            "api_key":os.getenv("AZURE_OPENAI_API_KEY"),
-            "base_url":os.getenv("AZURE_OPENAI_ENDPOINT"),
-            "api_version":"2024-06-01",
-        }
-    ]
-}
 
 
 # agent = ConversableAgent(
