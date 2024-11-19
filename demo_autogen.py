@@ -95,7 +95,7 @@ postman_agent = ConversableAgent(
 
 # Tool 실행용 Agent 정의
 tool_executor = ConversableAgent(
-    name="User",
+    name="tool_executor",
     llm_config=False,
     human_input_mode="NEVER"
 )
@@ -147,5 +147,5 @@ chat_result = supervisor_agent.initiate_chat(
     summary_method="reflection_with_llm"
 )
 
-print(chat_result.chat_history)
-print(chat_result.summary)
+# print(chat_result.chat_history)
+# print(chat_result.summary)

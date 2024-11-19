@@ -1,6 +1,7 @@
 import os
 
 from dotenv import load_dotenv
+from langchain_openai import AzureChatOpenAI
 
 load_dotenv()
 llm_config = {
@@ -14,3 +15,6 @@ llm_config = {
         }
     ]
 }
+
+
+llm = AzureChatOpenAI(azure_deployment='gpt-4o', api_version="2024-06-01")

@@ -3,20 +3,18 @@ import functools
 import operator
 from typing import Annotated, Literal, TypedDict, Sequence
 
-from dotenv import load_dotenv
 from langchain_core.messages import BaseMessage, AIMessage, HumanMessage
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.tools import tool
-from langchain_openai import AzureChatOpenAI
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.constants import START, END
 from langgraph.graph import StateGraph
 from langgraph.prebuilt import create_react_agent
 from pydantic import BaseModel
 
-load_dotenv()
-llm = AzureChatOpenAI(azure_deployment='gpt-4o', api_version="2024-06-01", temperature=0.5)
+from config import llm
+
 
 @tool
 def search_vehicles(order_by: Annotated[Literal["ASC", "DESC"], "order condition"])-> list[dict]:
@@ -124,19 +122,19 @@ supervisor_agent = ChatPromptTemplate.from_messages([
 searcher_agent = create_react_agent(
     llm,
     tools = [search_vehicles, search_vehicle_owners],
-    state_modifier="당신은 차량 정보 검색 역할을 담당하는 에이전트입니다. 주어진 주제와 이전 의견들을 고려하여 관련 정보를 도구를 활용하여 검색하고, 검색 결과를 제시해주세요. 단, 선택사항에 없는 도구는 사용할 수 없으며, 모르는 정보는 모른다고 답변해주세요. 없는 도구에 대해 시스템 내부에서 처리할거라 가정하면 안됩니다."
+    state_modifier="당신은 차량 정보 검색 역할을 담당하는 에이전트입니다. 주어진 주제와 이전 의견들을 고려하여 관련 정보를 도구를 활용하여 검색하고, 검색 결과를 제시해주세요. 단, 선택사항에 없는 도구는 사용할 수 없으며, 모르는 정보는 모른다고 답변해주세요. 없는 도구에 대해 시스템 내부에서 처리할거라 가정하면 안됩니다. 당신은 다음 에이전트를 선택할 권한이 없습니다."
 )
 
 robot_controller_agent = create_react_agent(
     llm,
     tools = [send_vehicle_to_repair_shop, send_vehicle_to_home],
-    state_modifier="당신은 차량을 제어하는 역할을 담당하는 에이전트입니다. 이전 채팅 이력들을 고려하여 관련 정보를 도구를 활용하여 차량을 제어하세요. 단, 선택사항에 없는 도구는 사용할 수 없으며, 모르는 정보는 모른다고 답변해주세요. 없는 도구에 대해 시스템 내부에서 처리할거라 가정하면 안됩니다."
+    state_modifier="당신은 차량을 제어하는 역할을 담당하는 에이전트입니다. 이전 채팅 이력들을 고려하여 관련 정보를 도구를 활용하여 차량을 제어하세요. 단, 선택사항에 없는 도구는 사용할 수 없으며, 모르는 정보는 모른다고 답변해주세요. 없는 도구에 대해 시스템 내부에서 처리할거라 가정하면 안됩니다. 당신은 다음 에이전트를 선택할 권한이 없습니다."
 )
 
 postman_agent = create_react_agent(
     llm,
     tools = [send_sms],
-    state_modifier="당신은 SMS 발송을 담당하는 에이전트입니다. 주어진 주제와 이전 의견들을 고려하여 관련 정보를 도구를 활용하여 SMS를 발송하고, 결과를 제시해주세요. 단, 선택사항에 없는 도구는 사용할 수 없으며, 모르는 정보는 모른다고 답변해주세요. 없는 도구에 대해 시스템 내부에서 처리할거라 가정하면 안됩니다."
+    state_modifier="당신은 SMS 발송을 담당하는 에이전트입니다. 주어진 주제와 이전 의견들을 고려하여 관련 정보를 도구를 활용하여 SMS를 발송하고, 결과를 제시해주세요. 단, 선택사항에 없는 도구는 사용할 수 없으며, 모르는 정보는 모른다고 답변해주세요. 없는 도구에 대해 시스템 내부에서 처리할거라 가정하면 안됩니다. 당신은 다음 에이전트를 선택할 권한이 없습니다."
 )
 
 
@@ -175,6 +173,6 @@ for message in graph_stream:
     valueList = list(message.values())
 
     message = valueList[0]['messages'][0]
-    print("---------")
-    print(f"[{message.name}]\n")
-    print(message.content)
+    print("--------------------------------------------------------------------------------\n")
+    print(f"Next Agent : {message.name}\n")
+    print(f"{message.content}\n")
