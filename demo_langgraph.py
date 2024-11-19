@@ -1,6 +1,7 @@
 # Tool 정의
 import functools
 import operator
+from datetime import datetime
 from typing import Annotated, Literal, TypedDict, Sequence
 
 from langchain_core.messages import BaseMessage, AIMessage, HumanMessage
@@ -169,6 +170,8 @@ question = "가장 최근 데이터를 보낸 차량을 정비소로 보내고, 
 
 graph_stream = graph.stream({"messages":[HumanMessage(content=question)]}, config={"configurable": {"thread_id":"2"}})
 
+start_time = datetime.now()
+print(f"대화 시작 : {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
 for message in graph_stream:
     valueList = list(message.values())
 
@@ -176,3 +179,7 @@ for message in graph_stream:
     print("--------------------------------------------------------------------------------\n")
     print(f"Next Agent : {message.name}\n")
     print(f"{message.content}\n")
+
+end_time = datetime.now()
+print(f"대화 종료 : {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
+print(f"대화 소요 시간 : {end_time - start_time}")

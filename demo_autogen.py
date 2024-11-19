@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Annotated, Literal
 
 from autogen import ConversableAgent, GroupChat, GroupChatManager
@@ -141,11 +142,15 @@ question = "가장 최근 데이터를 보낸 차량을 정비소로 보내고, 
 
 
 # 대화 시작
+start_time = datetime.now()
+print(f"대화 시작 : {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+
 chat_result = supervisor_agent.initiate_chat(
     group_chat_manager,
     message=question,
     summary_method="reflection_with_llm"
 )
 
-# print(chat_result.chat_history)
-# print(chat_result.summary)
+end_time = datetime.now()
+print(f"대화 종료 : {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
+print(f"대화 소요 시간 : {end_time - start_time}")
