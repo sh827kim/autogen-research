@@ -79,15 +79,12 @@ searcher_agent = ConversableAgent(
     human_input_mode="NEVER"
 )
 
-
-
 vehicle_controller_agent = ConversableAgent(
     name="vehicle_controller_agent",
     system_message="당신은 자동차를 제어 역할을 담당하는 에이전트입니다. 주어진 주제와 이전 의견들을 고려하여 주어진 도구를 활용하여 자동차를 제어해주세요.",
     llm_config=llm_config,
     human_input_mode="NEVER"
 )
-
 
 postman_agent = ConversableAgent(
     name="postman_agent",

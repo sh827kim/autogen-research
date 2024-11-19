@@ -4,21 +4,19 @@ import operator
 from typing import Annotated, Literal, TypedDict, Sequence
 
 from dotenv import load_dotenv
-from langchain_core.messages import BaseMessage, AIMessage, ToolMessage
+from langchain_core.messages import BaseMessage, AIMessage, HumanMessage
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_core.runnables import ConfigurableField
 from langchain_core.tools import tool
 from langchain_openai import AzureChatOpenAI
+from langgraph.checkpoint.memory import MemorySaver
+from langgraph.constants import START, END
+from langgraph.graph import StateGraph
+from langgraph.prebuilt import create_react_agent
 from pydantic import BaseModel
 
 load_dotenv()
-llm = (AzureChatOpenAI(azure_deployment='gpt-4o', api_version="2024-06-01", http_client=http_client, http_async_client=http_async_client, temperature=temperature, max_tokens=300, cache=True)
-.configurable_alternatives(
-    ConfigurableField(id="model"),
-    default_key="gpt-4o",
-    mini=AzureChatOpenAI(azure_deployment='gpt-4o-mini', api_version="2024-06-01", http_client=http_client, http_async_client=http_async_client, temperature=temperature, max_tokens=300, cache=True),
-))
+llm = AzureChatOpenAI(azure_deployment='gpt-4o', api_version="2024-06-01", temperature=0.5)
 
 @tool
 def search_vehicles(order_by: Annotated[Literal["ASC", "DESC"], "order condition"])-> list[dict]:
@@ -82,63 +80,101 @@ def send_vehicle_to_home(vehicle_id:Annotated[str, "Vehicle ID to be sent to hom
 @tool
 def send_sms(phone_number:Annotated[str, "phone number"], content:Annotated[str, "Content to send SMS"]) -> dict:
     """Send SMS"""
-    print("--------- SMS Contents ---------")
     print(f"{phone_number}\n{content}")
-    print("--------- SMS Done ---------")
     return {
         "result":"Success"
     }
 
+# 상태 관리 클래스 정의
 class AgentState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], operator.add]
     next: str
 
+# Supervisor Node 결과 클래스 정의
 class RouteResult(BaseModel):
-    next: Literal['Searcher', 'RobotController', 'Postman']
+    next: Literal['Searcher', 'RobotController', 'Postman', 'Finisher']
 
-
-supervisor_output_parser = JsonOutputParser(pydantic_object=RouteResult)
-
-supervisor_agent = ChatPromptTemplate.from_messages([
-    ("system", "당신은 다른 에이전트들의 작업을 감독하고, 적절한 에이전트를 선택하여 작업을 진행하는 감독자 역할입니다. 주어진 주제와 이전 의견들을 고려하여 적절한 에이전트를 선택하고, 해당 에이전트에게 작업을 지시해주세요. 작업이 끝나면 END 를 호출하세요. 주어진 에이전트는 Searcher, RobotController, Postman 이 있습니다.\n {format_instructions}"),
-    MessagesPlaceholder(variable_name="messages"),
-]).partial(format_instructions=supervisor_output_parser.get_format_instructions()) | llm
-
-searcher_agent = ChatPromptTemplate.from_messages([
-    ("system", "당신은 차량 정보 검색 역할을 담당하는 에이전트입니다. 주어진 주제와 이전 의견들을 고려하여 관련 정보를 도구를 활용하여 검색하고, 검색 결과를 제시해주세요. 단, 하나의 도구만 선택해야합니다. 주어진 도구:{tools}"),
-    MessagesPlaceholder(variable_name="messages"),
-]).partial(tools=", ".join(tool.name for tool in [search_vehicles, search_vehicle_owners])) | llm
-
-
-robot_controller_agent = ChatPromptTemplate.from_messages([
-    ("system", "당신은 차량을 제어하는 역할을 담당하는 에이전트입니다. 주어진 주제와 이전 의견들을 고려하여 관련 정보를 도구를 활용하여 차량을 제어하고, 결과를 제시해주세요. 단, 하나의 도구만 선택해야합니다. 주어진 도구:{tools}"),
-    MessagesPlaceholder(variable_name="messages"),
-]).partial(tools=", ".join(tool.name for tool in [send_vehicle_to_repair_shop, send_vehicle_to_home])) | llm
-
-
-postman_agent = ChatPromptTemplate.from_messages([
-    ("system", "당신은 SMS 발송을 담당하는 에이전트입니다. 주어진 주제와 이전 의견들을 고려하여 관련 정보를 도구를 활용하여 SMS를 발송하고, 결과를 제시해주세요. 단, 하나의 도구만 선택해야합니다. 주어진 도구:{tools}"),
-    MessagesPlaceholder(variable_name="messages"),
-]).partial(tools=", ".join(tool.name for tool in [send_sms])) | llm
-
-def supervisor_route(state:AgentState):
+# Supervisor Node 실행 및 다음 Node 결정 함수
+def supervisor_node(state:AgentState):
     result = supervisor_agent.invoke(state)
+
     parsed_result = RouteResult.model_validate(supervisor_output_parser.invoke(result))
-    result = AIMessage(**result.dict(exclude={"name"}), name="Supervisor")
+    result = AIMessage(content=result.content, name="Supervisor")
     return {
         "messages": [result],
         "next": parsed_result.next
     }
 
+# Agent Node 실행 함수
 def agent_route(state:AgentState, agent, name:str):
-    result = agent.invoke(state)
-    if isinstance(result, ToolMessage):
-        pass
+    messages = agent.invoke(state)
+    result = messages['messages'][-1]
+
     return {
-        "messages": [AIMessage(**result.dict(exclude={"type", "name"}), name=name)],
+        "messages": [AIMessage(content=result.content, name=name)],
     }
 
-searcher_agent_node = functools.partial(agent_route, agent=searcher_agent, name="Searcher")
-robot_controller_agent_node = functools.partial(agent_route, agent=robot_controller_agent, name="RobotController")
-postman_agent_node = functools.partial(agent_route, agent=postman_agent, name="Postman")
+# Agent 정의
+supervisor_output_parser = JsonOutputParser(pydantic_object=RouteResult)
+supervisor_agent = ChatPromptTemplate.from_messages([
+    ("system", "당신은 다른 에이전트들의 작업을 감독하고, 적절한 에이전트를 선택하여 작업을 진행하는 감독자 역할입니다. 주어진 주제와 이전 의견들을 고려하여 적절한 에이전트를 선택하고, 해당 에이전트에게 작업을 지시해주세요. 작업이 끝나면 Finisher 를 호출하세요. 주어진 에이전트는 Searcher, RobotController, Postman, Finisher 가 있습니다.\n {format_instructions}"),
+    MessagesPlaceholder(variable_name="messages"),
+]).partial(format_instructions=supervisor_output_parser.get_format_instructions()) | llm
 
+searcher_agent = create_react_agent(
+    llm,
+    tools = [search_vehicles, search_vehicle_owners],
+    state_modifier="당신은 차량 정보 검색 역할을 담당하는 에이전트입니다. 주어진 주제와 이전 의견들을 고려하여 관련 정보를 도구를 활용하여 검색하고, 검색 결과를 제시해주세요. 단, 선택사항에 없는 도구는 사용할 수 없으며, 모르는 정보는 모른다고 답변해주세요. 없는 도구에 대해 시스템 내부에서 처리할거라 가정하면 안됩니다."
+)
+
+robot_controller_agent = create_react_agent(
+    llm,
+    tools = [send_vehicle_to_repair_shop, send_vehicle_to_home],
+    state_modifier="당신은 차량을 제어하는 역할을 담당하는 에이전트입니다. 이전 채팅 이력들을 고려하여 관련 정보를 도구를 활용하여 차량을 제어하세요. 단, 선택사항에 없는 도구는 사용할 수 없으며, 모르는 정보는 모른다고 답변해주세요. 없는 도구에 대해 시스템 내부에서 처리할거라 가정하면 안됩니다."
+)
+
+postman_agent = create_react_agent(
+    llm,
+    tools = [send_sms],
+    state_modifier="당신은 SMS 발송을 담당하는 에이전트입니다. 주어진 주제와 이전 의견들을 고려하여 관련 정보를 도구를 활용하여 SMS를 발송하고, 결과를 제시해주세요. 단, 선택사항에 없는 도구는 사용할 수 없으며, 모르는 정보는 모른다고 답변해주세요. 없는 도구에 대해 시스템 내부에서 처리할거라 가정하면 안됩니다."
+)
+
+
+# 그래프 생성
+
+workflow = StateGraph(AgentState)
+workflow.add_node("Supervisor", supervisor_node)
+workflow.add_node("Searcher", functools.partial(agent_route, agent=searcher_agent, name="Searcher"))
+workflow.add_node("RobotController", functools.partial(agent_route, agent=robot_controller_agent, name="RobotController"))
+workflow.add_node("Postman", functools.partial(agent_route, agent=postman_agent, name="Postman"))
+
+workflow.add_edge(START, "Supervisor")
+workflow.add_conditional_edges(
+    "Supervisor",
+    lambda state: state["next"],
+    {
+        "Searcher": "Searcher",
+        "RobotController": "RobotController",
+        "Postman": "Postman",
+        "Finisher": END
+    }
+)
+
+for node in ["Searcher", "RobotController", "Postman"]:
+    workflow.add_edge(node, "Supervisor")
+
+memory = MemorySaver()
+graph = workflow.compile(checkpointer=memory)
+
+# 질문 생성 및 그래프 실행
+question = "가장 최근 데이터를 보낸 차량을 정비소로 보내고, 정비소로 보낸 차량의 정보를 SMS로 보내주세요. 제 휴대폰 번호는 010-0000-0000입니다."
+
+graph_stream = graph.stream({"messages":[HumanMessage(content=question)]}, config={"configurable": {"thread_id":"2"}})
+
+for message in graph_stream:
+    valueList = list(message.values())
+
+    message = valueList[0]['messages'][0]
+    print("---------")
+    print(f"[{message.name}]\n")
+    print(message.content)
